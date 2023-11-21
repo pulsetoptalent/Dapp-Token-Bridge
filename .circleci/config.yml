@@ -1,0 +1,68 @@
+version: 2.1
+orbs:
+  coveralls: coveralls/coveralls@1.0.6
+jobs:
+  build:
+    working_directory: ~/repo
+    docker:
+      - image: circleci/node:lts
+      # The first ganache-cli container is meant to simulate a main chain, and the second one for a side chain (integration testing only)
+      - image: trufflesuite/ganache-cli
+        # The gas limit is 6700000 to avoid trying to deploy a contract larger than expected
+        command: ganache-cli -i 5777 --chainId 5777 -l 6700000 -k istanbul
+      - image: trufflesuite/ganache-cli
+        command: ganache-cli -i 5776 --chainId 5776 -p 8546 -l 6700000 -k istanbul
+    steps:
+      - checkout
+      # Download and cache dependencies
+      - restore_cache:
+          keys:
+            - v1-dependencies-{{ checksum "bridge/package.json" }}
+            # Fallback to using the latest cache if no exact match is found
+            - v1-dependencies-
+      - run:
+          name: install bridge dependencies
+          command: |
+            cd bridge
+            npm ci
+      - run:
+          name: install federator dependencies
+          command: |
+            cd federator
+            npm ci
+      - save_cache:
+          paths:
+            - bridge/node_modules
+          key: v1-dependencies-{{ checksum "bridge/package.json" }}
+      - run:
+          name: contracts lint
+          command: |
+            cd bridge
+            npm run lint
+      - run:
+          name: deploy contracts in development and mirror
+          command: |
+            cd bridge
+            npm run deployLocalIntegrationTest
+      - run:
+          name: federator integration tests
+          command: |
+            cd federator
+            npm run integrationTest
+      - run:
+          name: Heartbeat federator integration tests
+          command: |
+            cd federator
+            npm run integrationHeartbeatTest
+      - run:
+          name: federator unit tests
+          command: |
+            cd federator
+            npm test
+      - run:
+          name: bridge unit tests + coverage
+          command: |
+            cd bridge
+            npm run coverage
+      - coveralls/upload:
+          path_to_lcov: "./bridge/coverage/lcov.info"

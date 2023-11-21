@@ -1,0 +1,5 @@
+./docs
+./ui
+./federator/test
+./federator/integrationTest
+./federator/node_modules
